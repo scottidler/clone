@@ -1,0 +1,67 @@
+#!/usr/bin/env python
+
+import os
+import imp
+import sys
+import argparse
+
+sys.dont_write_bytecode = True
+from ConfigParser import SafeConfigParser
+from pprint import pprint
+
+def expand(path):
+    if path:
+        path = os.path.abspath(os.path.expanduser(path))
+    return path
+
+def load_config(filename):
+    parser = SafeConfigParser()
+    cfg = {}
+    if os.path.isfile(filename):
+        parser.read(filename)
+        for name, value in parser.items('clone'):
+            if '\n' in value:
+                value = value.strip().split('\n')
+            cfg[name] = value
+    return cfg
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--giturl',
+        metavar='URL',
+        help='the giturl to be used with git clone')
+    parser.add_argument(
+        '--clonepath',
+        metavar='PATH',
+        default=os.getcwd(),
+        help='path to store all cloned repos')
+    parser.add_argument(
+        '--mirrorpath',
+        metavar='PATH',
+        help='path to cached repos to support fast cloning')
+    parser.add_argument(
+        '--versioning',
+        action='store_true',
+        help='turn on versioning; checkout in reponame/commit rather than reponame')
+    parser.add_argument(
+        'repospec',
+        help='repospec schema is giturl?reponame')
+    parser.add_argument(
+        'revision',
+        nargs='?',
+        help='revision')
+
+    cfg = {}
+    for config in ('/etc/clone/clone.cfg', '~/.clone/clone.cfg', './clone.cfg'):
+        cfg.update(load_config(config))
+    clone = imp.load_source('clone', expand(cfg['clonepy_path']))
+    ns = parser.parse_args()
+    locals().update(ns.__dict__)
+    for giturl in cfg.get('giturls', []):
+        if 0 == clone.lsremote(giturl + repospec)[0]:
+            giturl, reponame, revision = clone.decompose(repospec, giturl)
+            break
+    #giturl, reponame, revision = clone.decompose(repospec, giturl)
+    _, commit = clone.divine(giturl, reponame, revision)
+    print clone.clone(giturl, reponame, commit, clonepath, mirrorpath, versioning)
