@@ -15,6 +15,7 @@ def expand(path):
     return path
 
 def load_config(filename):
+    filename = expand(filename)
     parser = SafeConfigParser()
     cfg = {}
     if os.path.isfile(filename):
