@@ -56,7 +56,7 @@ if __name__ == '__main__':
     cfg = {}
     for config in ('/etc/clone/clone.cfg', '~/.clone/clone.cfg', './clone.cfg'):
         cfg.update(load_config(config))
-    clone = imp.load_source('clone', expand(cfg['clonepy_path']))
+    clone = imp.load_source('clone', expand(cfg['clonepy']))
     ns = parser.parse_args()
     locals().update(ns.__dict__)
     for giturl in cfg.get('giturls', []):
