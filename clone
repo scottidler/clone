@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import re
 import imp
 import sys
 import argparse
@@ -10,16 +11,8 @@ from ConfigParser import SafeConfigParser
 from pprint import pprint
 from subprocess import CalledProcessError
 
-class FailedDicover(Exception):
-    pass
-
-def expand(path):
-    if path:
-        path = os.path.abspath(os.path.expanduser(path))
-    return path
-
 def load_config(filename):
-    filename = expand(filename)
+    filename = os.path.expanduser(filename)
     parser = SafeConfigParser()
     cfg = {}
     if os.path.isfile(filename):
@@ -30,12 +23,62 @@ def load_config(filename):
             cfg[name] = value
     return cfg
 
+CFG = {}
+for config in ('/etc/clone/clone.cfg', '~/.clone/clone.cfg', './clone.cfg'):
+    CFG.update(load_config(config))
+clone = imp.load_source('clone', os.path.expanduser(CFG['clonepy']))
+
+class FailedDicover(Exception):
+    pass
+
+def ls_remote(repourl, verbose=False):
+    return clone.run('git ls-remote ' + repourl, verbose)
+
+def decompose(giturl, repospec, verbose=False):
+    regex = re.compile('((git|ssh|https?|rsync)://)(\w+@)?([\w\.]+)(:(\d+))?[:/]{1,2}')
+    if giturl:
+        return giturl, repospec
+    match = regex.match(repospec)
+    if match:
+        giturl = match.group()
+        reponame = os.path.splitext(repospec[len(giturl):])[0]
+    else:
+        reponame = repospec
+    if verbose:
+        print 'decompose: giturl=%(giturl)s reponame=%(reponame)s' % locals()
+    return giturl, reponame
+
+def divine(lsremote, revision):
+    r2c = {}
+    c2r = {}
+    for line in lsremote.split('\n'):
+        commit, refname = line.split('\t')
+        r2c[refname] = commit
+        c2r[commit] = refname
+
+    refnames = [
+        'refs/heads/' + revision,
+        'refs/tags/' + revision,
+        revision
+    ]
+
+    commit = None
+    for refname in refnames:
+        commit = r2c.get(refname, None)
+        if commit:
+            break
+
+    if not commit:
+        commit = revision
+
+    return c2r.get(commit, None), commit
+
 def discover(giturls, repospec, verbose):
     for giturl in giturls:
-        exitcode, stdout, stderr = clone.ls_remote(giturl + repospec, verbose=False)
+        exitcode, stdout, stderr = ls_remote(giturl + repospec, verbose=False)
         if 0 == exitcode:
-            giturl, reponame = clone.decompose(giturl, repospec)
-            _, commit = clone.divine(stdout, revision)
+            giturl, reponame = decompose(giturl, repospec)
+            _, commit = divine(stdout, revision)
             return giturl, reponame, commit
     raise FailedDiscover
 
@@ -71,11 +114,7 @@ if __name__ == '__main__':
         nargs='?',
         help='revision')
 
-    cfg = {}
-    for config in ('/etc/clone/clone.cfg', '~/.clone/clone.cfg', './clone.cfg'):
-        cfg.update(load_config(config))
-    clone = imp.load_source('clone', expand(cfg['clonepy']))
     ns = parser.parse_args()
     locals().update(ns.__dict__)
-    giturl, reponame, commit = discover(cfg.get('giturls', [])+[''], repospec, verbose)
+    giturl, reponame, commit = discover(CFG.get('giturls', [])+[''], repospec, verbose)
     print clone.clone(giturl, reponame, commit, clonepath, mirrorpath, versioning)

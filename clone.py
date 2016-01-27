@@ -9,9 +9,6 @@ from subprocess import Popen, PIPE
 
 sys.dont_write_bytecode = True
 
-class BadGiturl(Exception):
-    pass
-
 @contextmanager
 def cd(*args, **kwargs):
     '''
@@ -67,48 +64,6 @@ def run(*args, **kwargs):
 def expand(path):
     if path:
         return os.path.expanduser(path)
-
-def ls_remote(repourl, verbose=False):
-    return run('git ls-remote ' + repourl, verbose)
-
-def decompose(giturl, repospec, verbose=False):
-    regex = re.compile('((git|ssh|https?|rsync)://)(\w+@)?([\w\.]+)(:(\d+))?[:/]{1,2}')
-    if giturl:
-        return giturl, repospec
-    match = regex.match(repospec)
-    if match:
-        giturl = match.group()
-        reponame = os.path.splitext(repospec[len(giturl):])[0]
-    else:
-        reponame = repospec
-    if verbose:
-        print 'decompose: giturl=%(giturl)s reponame=%(reponame)s' % locals()
-    return giturl, reponame
-
-def divine(lsremote, revision):
-    r2c = {}
-    c2r = {}
-    for line in lsremote.split('\n'):
-        commit, refname = line.split('\t')
-        r2c[refname] = commit
-        c2r[commit] = refname
-
-    refnames = [
-        'refs/heads/' + revision,
-        'refs/tags/' + revision,
-        revision
-    ]
-
-    commit = None
-    for refname in refnames:
-        commit = r2c.get(refname, None)
-        if commit:
-            break
-
-    if not commit:
-        commit = revision
-
-    return c2r.get(commit, None), commit
 
 def clone(giturl, reponame, commit, clonepath, mirrorpath, versioning=False):
     clonepath = expand(clonepath)
