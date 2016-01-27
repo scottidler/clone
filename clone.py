@@ -9,63 +9,86 @@ from subprocess import Popen, PIPE
 
 sys.dont_write_bytecode = True
 
-class NoDefaultOrDecomposedValueForGiturl(Exception):
+class BadGiturl(Exception):
     pass
 
 @contextmanager
 def cd(*args, **kwargs):
+    '''
+    helper change dir function to be used with 'with' expressions
+    '''
     mkdir = kwargs.pop('mkdir', True)
+    verbose = kwargs.pop('verbose', False)
     path = os.path.sep.join(args)
     path = os.path.normpath(path)
     path = os.path.expanduser(path)
     prev = os.getcwd()
     if path != prev:
         if mkdir:
-            run('mkdir -p %(path)s' % locals())
+            run('mkdir -p %(path)s' % locals(), verbose=verbose)
         os.chdir(path)
         curr = os.getcwd()
         sys.path.append(curr)
+        if verbose:
+            print 'cd %s' % curr
     try:
         yield
     finally:
         if path != prev:
             sys.path.remove(curr)
             os.chdir(prev)
+            if verbose:
+                print 'cd %s' % prev
 
 def run(*args, **kwargs):
+    '''
+    thin wrapper around Popen; returns exitcode, stdout and stderr
+    '''
+    nerf = kwargs.pop('nerf', False)
+    verbose = kwargs.pop('verbose', False)
+    if (verbose or nerf) and args[0]:
+        print args[0]
+    if nerf:
+        return (None, 'nerfed', 'nerfed')
     process = Popen(
         shell=kwargs.pop('shell', True),
         stdout=kwargs.pop('stdout', PIPE),
         stderr=kwargs.pop('stderr', PIPE),
         *args, **kwargs)
+
+
     stdout, stderr = process.communicate()
+    stdout, stderr = stdout.strip(), stderr.strip()
     exitcode = process.poll()
-    return exitcode, stdout.strip(), stderr.strip()
+    if verbose and stdout:
+        print stdout
+    return exitcode, stdout, stderr
 
 def expand(path):
     if path:
         return os.path.expanduser(path)
 
-def decompose(repospec, giturl=None):
+def ls_remote(repourl, verbose=False):
+    return run('git ls-remote ' + repourl, verbose)
+
+def decompose(giturl, repospec, verbose=False):
     regex = re.compile('((git|ssh|https?|rsync)://)(\w+@)?([\w\.]+)(:(\d+))?[:/]{1,2}')
+    if giturl:
+        return giturl, repospec
     match = regex.match(repospec)
     if match:
         giturl = match.group()
         reponame = os.path.splitext(repospec[len(giturl):])[0]
     else:
         reponame = repospec
-    if giturl:
-        return giturl, reponame, 'master'
-    raise NoDefaultOrDecomposedValueForGiturl
+    if verbose:
+        print 'decompose: giturl=%(giturl)s reponame=%(reponame)s' % locals()
+    return giturl, reponame
 
-def lsremote(repourl):
-    return run('git ls-remote ' + repourl)
-
-def divine(giturl, reponame, revision):
+def divine(lsremote, revision):
     r2c = {}
     c2r = {}
-    result = lsremote(giturl + reponame)[1]
-    for line in result.split('\n'):
+    for line in lsremote.split('\n'):
         commit, refname = line.split('\t')
         r2c[refname] = commit
         c2r[commit] = refname

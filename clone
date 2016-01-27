@@ -8,6 +8,10 @@ import argparse
 sys.dont_write_bytecode = True
 from ConfigParser import SafeConfigParser
 from pprint import pprint
+from subprocess import CalledProcessError
+
+class FailedDicover(Exception):
+    pass
 
 def expand(path):
     if path:
@@ -25,6 +29,15 @@ def load_config(filename):
                 value = value.strip().split('\n')
             cfg[name] = value
     return cfg
+
+def discover(giturls, repospec, verbose):
+    for giturl in giturls:
+        exitcode, stdout, stderr = clone.ls_remote(giturl + repospec, verbose=False)
+        if 0 == exitcode:
+            giturl, reponame = clone.decompose(giturl, repospec)
+            _, commit = clone.divine(stdout, revision)
+            return giturl, reponame, commit
+    raise FailedDiscover
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -46,10 +59,15 @@ if __name__ == '__main__':
         action='store_true',
         help='turn on versioning; checkout in reponame/commit rather than reponame')
     parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='turn on verbose output')
+    parser.add_argument(
         'repospec',
         help='repospec schema is giturl?reponame')
     parser.add_argument(
         'revision',
+        default='master',
         nargs='?',
         help='revision')
 
@@ -59,10 +77,5 @@ if __name__ == '__main__':
     clone = imp.load_source('clone', expand(cfg['clonepy']))
     ns = parser.parse_args()
     locals().update(ns.__dict__)
-    for giturl in cfg.get('giturls', []):
-        if 0 == clone.lsremote(giturl + repospec)[0]:
-            giturl, reponame, revision = clone.decompose(repospec, giturl)
-            break
-    #giturl, reponame, revision = clone.decompose(repospec, giturl)
-    _, commit = clone.divine(giturl, reponame, revision)
+    giturl, reponame, commit = discover(cfg.get('giturls', [])+[''], repospec, verbose)
     print clone.clone(giturl, reponame, commit, clonepath, mirrorpath, versioning)
