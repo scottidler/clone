@@ -7,7 +7,7 @@ import sys
 import argparse
 
 sys.dont_write_bytecode = True
-from ConfigParser import SafeConfigParser
+from ConfigParser import ConfigParser
 from pprint import pprint
 from subprocess import CalledProcessError
 
@@ -17,7 +17,7 @@ class FailedDiscover(Exception):
 
 def load_config(filename):
     filename = os.path.expanduser(filename)
-    parser = SafeConfigParser()
+    parser = ConfigParser()
     cfg = {}
     if os.path.isfile(filename):
         parser.read(filename)
